@@ -114,47 +114,59 @@ class GoogleAds:
         #    return [{"Advertisor Id": ad[1],"Creative Id":ad["2"]} for ad in ads]
         #return []
 
-    def creative_search_by_advertiser_id(self, advertiser_id: str, count: int=40, next_page_id: str="") -> list:    #TODO do region search
-        """Get Creatives or ads by querying given Advertiser Id.
-        If no Ad is found, return an empty list.
+    def creative_search_by_advertiser_id(self, advertiser_id: str, count: int = 40, next_page_id: str = "", platform: str = "ALL") -> list:  # platform filter 
+    """
+    Get Creatives or ads by querying given Advertiser Id with optional platform filter.
+    If no Ad is found, return an empty list.
 
-        Args:
-            self: The instance of the class.
-            advertiser_id (str): The ID of the advertiser.
+    Args:
+        self: The instance of the class.
+        advertiser_id (str): The ID of the advertiser.
+        count (int): Number of ads to fetch (default: 40).
+        next_page_id (str): For pagination purposes (default: "").
+        platform (str): Filter for platform (e.g., "SHOPPING", "SEARCH", etc.).
 
-        Returns:
-            list: A list of creatives or ads."""
+    Returns:
+        list: A list of creatives or ads.
+    """
 
-        data = {
-            'f.req': {
-                "2": min(count, 100),
-                "3": {"12": {"1": "", "2": True}, "13": {"1": [advertiser_id]}},
-                "7": {"1": 1},
-            }
+    data = {
+        'f.req': {
+            "2": min(count, 100),
+            "3": {"12": {"1": "", "2": True}, "13": {"1": [advertiser_id]}},
+            "7": {"1": 1},
         }
-        if next_page_id:
-            data['f.req']["4"] = next_page_id
-        if self.r_check:
-            data['f.req']["3"]["8"] = [self.region_num]
+    }
+    
+    if next_page_id:
+        data['f.req']["4"] = next_page_id
+    
+    if self.r_check:
+        data['f.req']["3"]["8"] = [self.region_num]
+    
+    # Add filter for platform
+    if platform != "ALL":
+        data['f.req']["3"]["10"] = [platform.upper()]  # platform key
 
-        data['f.req'] = json.dumps(data['f.req'])
+    data['f.req'] = json.dumps(data['f.req'])
 
+    response = self.reqs.post(
+        'https://adstransparency.google.com/anji/_/rpc/SearchService/SearchCreatives',
+        params={'authuser': ''},
+        data=data,
+    )
 
-        response = self.reqs.post(
-            'https://adstransparency.google.com/anji/_/rpc/SearchService/SearchCreatives',
-            params={'authuser': ''},
-            data=data,
-        )
+    res = response.json()
+    ads = res.get("1", []) 
+    ads = [ad["2"] for ad in ads]
+    next_page_id = res.get("2")
 
-        res = response.json()
-        ads = res.get("1", [])
-        ads = [ad["2"] for ad in ads]
-        next_page_id = res.get("2")
-        if count <= 100 or not ads or next_page_id is None:
-            return ads[:count]
-        count -= len(ads)
-        ads.extend(self.creative_search_by_advertiser_id(advertiser_id, count, next_page_id))
-        return ads
+    if count <= 100 or not ads or next_page_id is None:
+        return ads[:count]
+
+    count -= len(ads)
+    ads.extend(self.creative_search_by_advertiser_id(advertiser_id, count, next_page_id, platform))
+    return ads
 
     def get_creative_Ids(self, keyword: str, count: int =40) -> dict:
         """Makes search for given keyword and gets the first Suggestion. Then gets the Creatives for that.
